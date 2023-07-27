@@ -1,5 +1,16 @@
 {
   "canisters": {
+    "ledger": {
+      "type": "custom",
+      "wasm": "ledger.wasm",
+      "candid": "ledger.public.did",
+      "remote": {
+        "candid": "ledger.public.did",
+        "id": {
+          "ic": "ryjl3-tyaaa-aaaaa-aaaba-cai"
+        }
+      }
+    },
     "songnft_backend": {
       "main": "src/songnft_backend/main.mo",
       "type": "motoko"
