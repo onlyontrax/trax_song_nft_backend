@@ -3,7 +3,7 @@
     "ledger": {
       "type": "custom",
       "wasm": "ledger.wasm",
-      "candid": "ledger.public.did",
+      "candid": "ledger.private.did",
       "remote": {
         "candid": "ledger.public.did",
         "id": {
@@ -12,7 +12,11 @@
       }
     },
     "songnft_backend": {
-      "main": "src/songnft_backend/main.mo",
+      "main": "src/songnft_backend/songs.mo",
+      "type": "motoko"
+    },
+    "ticketnft_backend": {
+      "main": "src/songnft_backend/tickets.mo",
       "type": "motoko"
     },
     "songnft_frontend": {
@@ -30,11 +34,16 @@
     }
   },
   "defaults": {
+    "replica": {
+      "subnet_type":"system"
+    },
     "build": {
       "args": "",
-      "packtool": ""
+      "packtool": "vessel sources"
     }
   },
-  "output_env_file": ".env",
+  "declarations": {
+    "node_compatibility": true
+  },
   "version": 1
 }
