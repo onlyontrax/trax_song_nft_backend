@@ -32,7 +32,7 @@ actor TicketNFTMarketplace = {
   type Tokens                    = T.Tokens;
   type AccountIdentifier         = T.AccountIdentifier;
 
-  let Ledger = actor "bkyz2-fmaaa-aaaaa-qaaaq-cai" : actor {
+  let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
         transfer : shared TransferArgs -> async  Result_1;
         account_balance : shared query BinaryAccountBalanceArgs -> async Tokens;
@@ -56,7 +56,7 @@ actor TicketNFTMarketplace = {
   type TicketMetaData = {
     id: Text;
     eventDate: Text;
-    eventTime: Time.Time;
+    eventTime: Text;
     name: Text;
     location: Text;
     description: Text;
@@ -90,6 +90,10 @@ actor TicketNFTMarketplace = {
 
   public query func getFanTickets(fan: Principal) : async ?[Text] {
     return Map.get(fanNFTWallet, phash, fan);
+  };
+  
+  public func candidAccountIdentifierToBlob(canisterId: Text) : async Blob {
+    return Account.accountIdentifier(Principal.fromText(canisterId), Account.defaultSubaccount());
   };
 
   // Mint an NFT
@@ -149,6 +153,10 @@ actor TicketNFTMarketplace = {
           count := count + 1;
         }
       };
+    };
+    switch (Map.get(fanNFTWallet, phash, owner)) {
+      case (null) { var c = Map.put(fanNFTWallet, phash, caller, [id]); };
+      case (?nftArray) { var c = Map.put(fanNFTWallet, phash, caller, Array.append<Text>(nftArray, [id])); };
     };
   };
 
@@ -455,6 +463,21 @@ actor TicketNFTMarketplace = {
           }
         };
       }; 
+    };
+    return Buffer.toArray(res);
+  };
+
+  public func getAllTicketNFTs() : async [(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text)] {
+    var res = Buffer.Buffer<(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text)>(2);
+    for ((key, value) in Map.entries(nfts)) {
+      switch(await getTicketMetaData(key)) {
+        case(?ticket) {
+          res.add(key, ticket.name, ticket.location, ticket.eventDate, ticket.eventTime, ticket.description, ticket.totalSupply, ticket.price, ticket.ticker);
+        };
+        case (null) {
+
+        };
+      };
     };
     return Buffer.toArray(res);
   };

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <title>songnft</title>
+    <title>Song/Ticket NFTs</title>
     <base href="/" />
     <link rel="icon" href="favicon.ico" />
     <link type="text/css" rel="stylesheet" href="main.css" />
@@ -13,12 +13,72 @@
       <img src="logo2.svg" alt="DFINITY logo" />
       <br />
       <br />
-      <form action="#">
-        <label for="name">Enter your name: &nbsp;</label>
-        <input id="name" alt="Name" type="text" />
-        <button type="submit">Click Me!</button>
+      <p>Song List</p>
+      <button type="submit" id="get_song_list">Get Song NFT List</button>
+      <section id="song_nft_list"></section>
+      <p>Mint Song</p>
+      <form id="mint_song_form" action="#">
+        <label for="name">Song name: &nbsp;</label>
+        <input id="name" alt="Name" type="text" /> <br/>
+        <label for="description">Description: &nbsp;</label>
+        <textarea id="description" alt="Description">
+        </textarea> <br/>
+        <label for="totalSupply">Total Supply: &nbsp;</label>
+        <input id="totalSupply" alt="TotalSupply" type="text" /> <br/>
+        <label for="price">Price: &nbsp;</label>
+        <input id="price" alt="Price" type="text" /> <br/>
+        <button type="submit">Mint</button>
       </form>
-      <section id="greeting"></section>
+      <section id="mint_song_result"></section>
+      <p>Purchase Song</p>
+      <form id="purchase_song_form" action="#">
+        <label for="song_id">Song Id: &nbsp;</label>
+        <input id="song_id" alt="Song Id" type="text" /> <br/>
+        <button type="submit">Purchase</button>
+      </form>
+      <section id="purchase_song_result"></section>
+      <p>Purchased Song List of Fan</p>
+      <form id="fan_wallet_form" action="#">
+        <button type="submit">Get Purchased List</button>
+      </form>
+      <section id="fan_wallet_result"></section>
+      <br />
+      <br />
+      <p>Ticket List</p>
+      <button type="submit" id="get_ticket_list">Get Ticket NFT List</button>
+      <section id="ticket_nft_list"></section>
+      <p>Mint Ticket</p>
+      <form id="mint_ticket_form" action="#">
+        <label for="ticket_name">Name: &nbsp;</label>
+        <input id="ticket_name" alt="Ticket Name" type="text" /> <br/>
+        <label for="event_date">Event Date: &nbsp;</label>
+        <input id="event_date" alt="Event Date" type="text" /> <br/>
+        <label for="event_time">Event Time: &nbsp;</label>
+        <input id="event_time" alt="Event Time" type="text" /> <br/>
+        <label for="ticket_location">Location: &nbsp;</label>
+        <input id="ticket_location" alt="Event Location" type="text" /> <br/>
+        <label for="ticket_description">Description: &nbsp;</label>
+        <textarea id="ticket_description" alt="Description">
+        </textarea> <br/>
+        <label for="ticket_totalSupply">Total Supply: &nbsp;</label>
+        <input id="ticket_totalSupply" alt="TotalSupply" type="text" /> <br/>
+        <label for="ticket_price">Price: &nbsp;</label>
+        <input id="ticket_price" alt="Ticket Price" type="text" /> <br/>
+        <button type="submit">Mint</button>
+      </form>
+      <section id="mint_ticket_result"></section>
+      <p>Purchase Ticket</p>
+      <form id="purchase_ticket_form" action="#">
+        <label for="ticket_id">Ticket Id: &nbsp;</label>
+        <input id="ticket_id" alt="Ticket Id" type="text" /> <br/>
+        <button type="submit">Purchase</button>
+      </form>
+      <section id="purchase_ticket_result"></section>
+      <p>Purchased Ticket List of Fan</p>
+      <form id="fan_ticket_wallet_form" action="#">
+        <button type="submit">Get Purchased List</button>
+      </form>
+      <section id="fan_ticket_wallet_result"></section>
     </main>
   </body>
 </html>

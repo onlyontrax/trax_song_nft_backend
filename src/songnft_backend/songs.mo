@@ -32,7 +32,7 @@ actor SongNFTMarketplace = {
   type Tokens                    = T.Tokens;
   type AccountIdentifier         = T.AccountIdentifier;
 
-  let Ledger = actor "bkyz2-fmaaa-aaaaa-qaaaq-cai" : actor {
+  let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
         transfer : shared TransferArgs -> async  Result_1;
         account_balance : shared query BinaryAccountBalanceArgs -> async Tokens;
@@ -144,6 +144,10 @@ actor SongNFTMarketplace = {
         }
       };
     };
+    switch (Map.get(fanNFTWallet, phash, owner)) {
+      case (null) { var c = Map.put(fanNFTWallet, phash, caller, [id]); };
+      case (?nftArray) { var c = Map.put(fanNFTWallet, phash, caller, Array.append<Text>(nftArray, [id])); };
+    };
   };
 
   public query func getSongMetadata(id : Text) : async ?SongMetaData {
@@ -212,6 +216,10 @@ actor SongNFTMarketplace = {
   private func getDeductedAmount(amount: Nat64, percent: Float) : async(Nat64){
     let priceFloat : Float = Float.fromInt(Nat64.toNat(amount));
     return Nat64.fromNat(Int.abs(Float.toInt(priceFloat * percent)));
+  };
+
+  public func candidAccountIdentifierToBlob(canisterId: Text) : async Blob {
+    return Account.accountIdentifier(Principal.fromText(canisterId), Account.defaultSubaccount());
   };
 
 
@@ -309,8 +317,24 @@ actor SongNFTMarketplace = {
     };
   };
 
+  public func accountIdentifierToBlobFromText (accountIdentifier : AccountIdentifier) : async T.AccountIdentifierToBlobResult {
+    await accountIdentifierToBlob({
+      accountIdentifier;
+      canisterId = ?Principal.fromActor(SongNFTMarketplace);
+    });
+  };
+
   public shared({caller}) func getCallerId() : async Principal {
     caller;
+  };
+
+
+  public shared({caller}) func getCallerIdentifier(): async Blob {
+    return Account.accountIdentifier(caller, Account.defaultSubaccount());
+  };
+
+  public shared({caller}) func getCallerIdentifierAsText(): async Text {
+    return Hex.encode(Blob.toArray(Account.accountIdentifier(caller, Account.defaultSubaccount())));
   };
 
   public shared({caller}) func getBalance(): async Tokens {
@@ -449,6 +473,21 @@ actor SongNFTMarketplace = {
           }
         };
       }; 
+    };
+    return Buffer.toArray(res);
+  };
+
+  public func getAllSongNFTs() : async [(Text, Text, Text, Nat, Nat64, Text)] {
+    var res = Buffer.Buffer<(Text, Text, Text, Nat, Nat64, Text)>(2);
+    for ((key, value) in Map.entries(nfts)) {
+      switch(await getSongMetadata(key)) {
+        case(?song) {
+          res.add(key, song.name, song.description, song.totalSupply, song.price, song.ticker);
+        };
+        case (null) {
+
+        };
+      };
     };
     return Buffer.toArray(res);
   };

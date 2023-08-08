@@ -3,7 +3,7 @@
     "ledger": {
       "type": "custom",
       "wasm": "ledger.wasm",
-      "candid": "ledger.private.did",
+      "candid": "ledger.public.did",
       "remote": {
         "candid": "ledger.public.did",
         "id": {
@@ -18,6 +18,18 @@
     "ticketnft_backend": {
       "main": "src/songnft_backend/tickets.mo",
       "type": "motoko"
+    },
+    "internet_identity": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "wasm": "internet_identity_dev.wasm",
+      "shrink": false,
+      "remote": {
+        "candid": "internet_identity.did",
+        "id": {
+          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
+        }
+      }
     },
     "songnft_frontend": {
       "dependencies": [
@@ -45,5 +57,15 @@
   "declarations": {
     "node_compatibility": true
   },
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8006",
+      "type": "ephemeral",
+      "replica": {
+        "subnet_type": "system"
+      }
+    }
+  },
+  "output_env_file": ".env",
   "version": 1
 }

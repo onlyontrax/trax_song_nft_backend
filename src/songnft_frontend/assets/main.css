@@ -12,12 +12,12 @@ img {
 
 form {
     display: flex;
-    justify-content: center;
+    justify-content: stretch;
     gap: 0.5em;
-    flex-flow: row wrap;
+    flex-direction: column;
     max-width: 40vw;
     margin: auto;
-    align-items: baseline;
+    align-items: stretch;
 }
 
 button[type="submit"] {
@@ -26,12 +26,6 @@ button[type="submit"] {
     float: right;
 }
 
-#greeting {
-    margin: 10px auto;
-    padding: 10px 60px;
-    border: 1px solid #222;
-}
-
-#greeting:empty {
-    display: none;
+section {
+    font-size: 1rem;
 }
