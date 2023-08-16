@@ -18,109 +18,74 @@ import Account "./utils/account";
 import Buffer     "mo:base/Buffer";
 import Hex        "./utils/Hex";
 import Map  "mo:stable-hash-map/Map";
+import Nat32 "mo:base/Nat32";
 
 // Define the smart contract
-actor TicketNFTMarketplace = {
+actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principal) = this {
+  type TransferArgs = T.TransferArgs;
+  type GetBlocksArgs = T.GetBlocksArgs;
+  type Result_1 = T.Result_1;
+  type BinaryAccountBalanceArgs = T.BinaryAccountBalanceArgs;
+  type QueryBlocksResponse = T.QueryBlocksResponse;
+  type Tokens = T.Tokens;
+  type AccountIdentifier = T.AccountIdentifier;
+  type TicketMetaData = T.TicketMetaData;
   type ArtistID = T.ArtistID;
   type FanID = T.FanID;
   type Percentage = T.Percentage;
   type Participants = T.Participants;
-  type TransferArgs              = T.TransferArgs;
-  type GetBlocksArgs             = T.GetBlocksArgs;
-  type Result_1                  = T.Result_1;
-  type BinaryAccountBalanceArgs        = T.BinaryAccountBalanceArgs;
-  type QueryBlocksResponse       = T.QueryBlocksResponse;
-  type Tokens                    = T.Tokens;
-  type AccountIdentifier         = T.AccountIdentifier;
-  type TicketMetaData = T.TicketMetaData;
-
+  type FanToTime = Map.Map<Principal, (Int, Nat, Text)>;
+  type ArtistToFan = Map.Map<ArtistID, FanToTime>;
+  type TokenIndex = T.TokenIndex;
+  type TokenIdentifier = T.TokenIdentifier;
   let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
         transfer : shared TransferArgs -> async  Result_1;
         account_balance : shared query BinaryAccountBalanceArgs -> async Tokens;
     };
-
   let FEE : Nat64 = 10000;
-
-  type NFT = {
-    id: Text;
-    owner: Principal;
-    productType: Text; // song, ticket
-  };
-
   let { ihash; nhash; thash; phash; calcHash } = Map;
-
-  // Define the marketplace fee
+  
   let marketplaceFee = 10;
-  // Define the marketplace fee recipient
   let marketplaceFeeRecipient = Principal.fromText("c2v5t-vzv25-xvigb-jhc7d-whtnk-xhgrc-cesv5-lrnrp-grfrj-i6j3z-aae");
-  stable var txNo : Nat64 = 0;
 
-  stable let nfts = Map.new<Text, NFT>(thash);
-  stable let ticketNfts = Map.new<Text, TicketMetaData>(thash);
-  // Define fan's NFT Wallet
-  stable let fanNFTWallet = Map.new<Principal, [Text]>(phash);
-  // Define the artists and their NFTs
-  stable let artistNFTs = Map.new<Principal, [Text]>(phash);
-  private type FanToTime         = Map.Map<FanID, (Int, Nat, Text)>;
-  private type ArtistToFan         = Map.Map<ArtistID, FanToTime>;
-  stable let contentPaymentMap = Map.new<Text, ArtistToFan>(thash); 
+  private var txNo : Nat64 = 0;
+  stable var owner: Principal = artistAccount;
+  stable var _minter: Principal = artistAccount;
+  stable var canisterTicket: ?TicketMetaData = ticketMetaData;
+  private stable var _nextTokenId : TokenIndex  = 0;
 
-  public query func getArtistTickets(artist: Principal) : async ?[Text] {
-    return Map.get(artistNFTs, phash, artist);
-  };
+  private var fanNFTWallet = Map.new<Principal, [Text]>(phash);
+  private var contentPaymentMap = Map.new<Text, ArtistToFan>(thash); 
+
+  private stable var tokenList = Map.new<Text, Principal>(thash);
+  private stable var supply = 0;
 
   public query func getFanTickets(fan: Principal) : async ?[Text] {
     return Map.get(fanNFTWallet, phash, fan);
   };
+
+  stable var initialised: Bool = false;
+
+  public func initCanister() :  async(Bool) {
+    assert(initialised == false);
+    switch(ticketMetaData){
+      case(?data) {
+        initialised := true;
+        return true;
+      };case null return false;
+    };
+  };
   
-  public func candidAccountIdentifierToBlob(canisterId: Text) : async Blob {
-    return Account.accountIdentifier(Principal.fromText(canisterId), Account.defaultSubaccount());
-  };
-
   // Mint an NFT
-  public shared({caller}) func mintTicketNFT(metadata: TicketMetaData) : async Text {
-    // assert(await isStringEmpty(metadata.name)), "Name must be not empty");
-    // assert(metadata.price > 0, "Price must be greater than 0");
-    let now = Time.now();
-    let nft : NFT = {
-      id = Principal.toText(caller) # "-" # metadata.name # "-" # (Int.toText(now));
-      owner = caller;
-      productType = "ticket"
-    };
-
-    let ticket : TicketMetaData = {
-      id = metadata.id;
-      name = metadata.name;
-      location = metadata.location;
-      eventDate = metadata.eventDate;
-      eventTime = metadata.eventTime;
-      description = metadata.description;
-      totalSupply = metadata.totalSupply;
-      price = metadata.price;
-      royalty = metadata.royalty;
-      status = metadata.status;
-      ticker = metadata.ticker;
-      schedule = metadata.schedule;
-    };
-
-    var a = Map.put(nfts, thash, nft.id, nft);
-    var b = Map.put(ticketNfts, thash, nft.id, ticket);
-    switch (Map.get(artistNFTs, phash, caller)) {
-      case (null) { var c = Map.put(artistNFTs, phash, caller, [nft.id]); };
-      case (?nftArray) { var c = Map.put(artistNFTs, phash, caller, Array.append<Text>(nftArray, [nft.id])); };
-    };
-    nft.id;
-  };
-
-  // Buy an NFT
-  public shared({ caller }) func purchaseTicket(id : Text): async () {
-    let owner : Principal = caller;
-    // assert(nfts.contains(id), "NFT does not exist");
-    // assert(Array.find((x) => x == id, fanNFTWallet[owner]) == null, "Buyer already purchased the NFT");
-    switch (await getTicketMetaData(id)) {
-      case (null) { return; };
+  public shared({caller}) func mintNFT(request: T.MintRequest) : async Text {
+    var token: Text = "error";
+    switch (canisterTicket) {
+      case (null) { return "error"; };
       case (?metadata) {
+        if (supply >= metadata.totalSupply and metadata.totalSupply != 0) {
+          return "total supply error";
+        };
         // assert(metadata.status == "active", "NFT is not available for sale");
         let amountToSend = await platformDeduction(metadata.price - (FEE * 2)); 
         var count : Nat64 = 0;
@@ -129,23 +94,23 @@ actor TicketNFTMarketplace = {
           switch(await transfer(collabs.participantID, participantsCut)){
               case(#ok(res)){ 
                 Debug.print("Paid artist: " # debug_show collabs.participantID #" amount: "# debug_show participantsCut #  " in block " # debug_show res);
-                await addToContentPaymentMap(id, collabs.participantID, metadata.ticker, caller, Nat64.toNat(participantsCut));
+                await addToContentPaymentMap(metadata.id, collabs.participantID, metadata.ticker, caller, Nat64.toNat(participantsCut));
               }; case(#err(msg)){   throw Error.reject("Unexpected error: " # debug_show msg);    };
             };
           count := count + 1;
-        }
+        };
+        switch (Map.get(fanNFTWallet, phash, owner)) {
+          case (null) { var c = Map.put(fanNFTWallet, phash, caller, [metadata.id]); };
+          case (?nftArray) { var c = Map.put(fanNFTWallet, phash, caller, Array.append<Text>(nftArray, [metadata.id])); };
+        };
+
+        token := metadata.id # Nat32.toText(_nextTokenId);
+        var d = Map.put(tokenList, thash, token, request.to);
       };
     };
-    switch (Map.get(fanNFTWallet, phash, owner)) {
-      case (null) { var c = Map.put(fanNFTWallet, phash, caller, [id]); };
-      case (?nftArray) { var c = Map.put(fanNFTWallet, phash, caller, Array.append<Text>(nftArray, [id])); };
-    };
-  };
-
-  public query func getTicketMetaData(id : Text) : async ?TicketMetaData {
-    // assert(nfts.contains(id), "NFT does not exist");
-    // assert(getProductType(id) != "song", "Not song NFT");
-    return Map.get(ticketNfts, thash, id);
+    supply := supply + 1;
+    _nextTokenId := _nextTokenId + 1;
+    return token;
   };
 
   private func platformDeduction(amount : Nat64) : async Nat64 {
@@ -210,115 +175,12 @@ actor TicketNFTMarketplace = {
     return Nat64.fromNat(Int.abs(Float.toInt(priceFloat * percent)));
   };
 
-
-  /**
-    * args : { accountIdentifier : AccountIdentifier, canisterId  : ?Principal }
-    * Takes an account identifier and returns a Blob
-    *
-    * Canister ID is required only for Principal, and will return an account identifier using that principal as a subaccount for the provided canisterId
-    */
-  public func accountIdentifierToBlob (args : T.AccountIdentifierToBlobArgs) : async T.AccountIdentifierToBlobResult {
-    let accountIdentifier = args.accountIdentifier;
-    let canisterId = args.canisterId;
-    let err = {
-      kind = #InvalidAccountIdentifier;
-      message = ?"Invalid account identifier";
-    };
-    switch (accountIdentifier) {
-      case(#text(identifier)){
-        switch (Hex.decode(identifier)) {
-          case(#ok v){
-            let blob = Blob.fromArray(v);
-            if(Account.validateAccountIdentifier(blob)){
-              #ok(blob);
-            } else {
-              #err(err);
-            }
-          };
-          case(#err _){
-            #err(err);
-          };
-        };
-      };
-      case(#principal principal){
-        switch(canisterId){
-          case (null){
-            #err({
-              kind = #Other;
-              message = ?"Canister Id is required for account identifiers of type principal";
-            })
-          };
-          case (? id){
-            let identifier = Account.accountIdentifier(id, Account.principalToSubaccount(principal));
-            if(Account.validateAccountIdentifier(identifier)){
-              #ok(identifier);
-            } else {
-              #err(err);
-            }
-          };
-        }
-      };
-      case(#blob(identifier)){
-        if(Account.validateAccountIdentifier(identifier)){
-          #ok(identifier);
-        } else {
-          #err(err);
-        }
-      };
-    };
-  };
-  /**
-    * args : { accountIdentifier : AccountIdentifier, canisterId  : ?Principal }
-    * Takes an account identifier and returns Hex-encoded Text
-    *
-    * Canister ID is required only for Principal, and will return an account identifier using that principal as a subaccount for the provided canisterId
-    */
-  public func accountIdentifierToText (args : T.AccountIdentifierToTextArgs) : async T.AccountIdentifierToTextResult {
-    let accountIdentifier = args.accountIdentifier;
-    let canisterId = args.canisterId;
-    switch (accountIdentifier) {
-      case(#text(identifier)){
-        #ok(identifier);
-      };
-      case(#principal(identifier)){
-        let blobResult = await accountIdentifierToBlob(args);
-        switch(blobResult){
-          case(#ok(blob)){
-            #ok(Hex.encode(Blob.toArray(blob)));
-          };
-          case(#err(err)){
-            #err(err);
-          };
-        };
-      };
-      case(#blob(identifier)){
-        let blobResult = await accountIdentifierToBlob(args);
-        switch(blobResult){
-          case(#ok(blob)){
-            #ok(Hex.encode(Blob.toArray(blob)));
-          };
-          case(#err(err)){
-            #err(err);
-          };
-        };
-      };
-    };
-  };
-
-  public shared({caller}) func getCallerId() : async Principal {
-    caller;
-  };
-
   public shared({caller}) func getBalance(): async Tokens {
       var specifiedAccount = Account.accountIdentifier(caller, Account.defaultSubaccount());
       await Ledger.account_balance({ account = Blob.toArray(specifiedAccount) })
   };
 
-  private func isStringEmpty(str: Text): async Bool {
-    return Text.size(str) == 0;
-  };
-
-  private func addToContentPaymentMap(id: Text, artist: ArtistID, ticker: Text, fan: FanID, amount: Nat) : async(){
+  private func addToContentPaymentMap(id: Text, artist: ArtistID, ticker: Text, fan: Principal, amount: Nat) : async(){
     let now = Time.now();
     switch(Map.get(contentPaymentMap, thash, id)){
       case(?innerMap){
@@ -327,7 +189,7 @@ actor TicketNFTMarketplace = {
               var a = Map.put(hasInit, phash, fan, (now, amount, ticker));
           };
           case null {
-            var x : FanToTime = Map.new<FanID, (Int, Nat, Text)>(phash);
+            var x : FanToTime = Map.new<Principal, (Int, Nat, Text)>(phash);
             
             var b = Map.put(x, phash, fan, (now, amount, ticker));
             
@@ -346,90 +208,45 @@ actor TicketNFTMarketplace = {
   };
 
 
-  public func getAllContentPayments() : async [(Text, ArtistID, FanID, Int, Nat, Text)]{  
+  public func getAllContentPayments() : async [(Text, ArtistID, Principal, Int, Nat, Text)]{  
 
-    var res = Buffer.Buffer<(Text, ArtistID, FanID, Int, Nat, Text)>(2);
+    var res = Buffer.Buffer<(Text, ArtistID, Principal, Int, Nat, Text)>(2);
 
     for((contentId, innerMap) in Map.entries(contentPaymentMap)){
-      switch(await getTicketMetaData(contentId)){
-        case(?content){
-          for((artistId, fanId) in Map.entries(innerMap)){
-            for((k,v) in Map.entries(fanId)){
-              var fanId: FanID = k;
+      for((artistId, fanId) in Map.entries(innerMap)){
+        for((k,v) in Map.entries(fanId)){
+          var fanId: Principal = k;
+          var timestamp: Int = v.0;
+          var amount: Nat = v.1;
+          var ticker: Text = v.2;
+          res.add(contentId, artistId, fanId, timestamp, amount, ticker);
+        }
+      }
+    };
+    return Buffer.toArray(res);
+  };
+
+  public func getAllArtistContentPayments(artist: ArtistID) : async [(Text, Principal, Int, Nat, Text)]{  
+    var res = Buffer.Buffer<(Text, Principal, Int, Nat, Text)>(2);
+
+    for((key, value) in Map.entries(contentPaymentMap)){
+      for((a, b) in Map.entries(value)){
+        if(a == artist){
+          for((k,v) in Map.entries(b)){
+              var fanId: Principal = k;
               var timestamp: Int = v.0;
               var amount: Nat = v.1;
               var ticker: Text = v.2;
-              res.add(contentId, artistId, fanId, timestamp, amount, ticker);
+              res.add(key, fanId, timestamp, amount, ticker);
             }
-          }
-        };
-        case(null){
-
         }
-      };
-
-      
-    };
-    return Buffer.toArray(res);
-  };
-
-  public query func getAllArtistContentIDs(artist: ArtistID) : async [Text] {
-
-    var ids = Buffer.Buffer<Text>(2);
-    for((key, value) in Map.entries(nfts)){
-      if(value.owner == artist){
-        var id = key;
-        ids.add(id);
-      } else {
-        switch (Map.get(ticketNfts, thash, key)) {
-          case (?nft) {
-            for(i in Iter.fromArray(nft.royalty)){
-              if(artist == i.participantID){
-                var partId = key;
-                Debug.print("getAllArtistContentIDs id: " # debug_show partId);
-                ids.add(partId);
-
-              };
-              Debug.print("getAllArtistContentIDs ids: " # debug_show Buffer.toArray(ids));
-            };
-          };
-          case(null) {
-
-          }
-        }
-        
-      };
-    };
-    return Buffer.toArray(ids);
-  };
-
-  public func getAllArtistContentPayments(artist: ArtistID) : async [(Text, FanID, Int, Nat, Text)]{  
-    let contentIds =  await getAllArtistContentIDs(artist);
-
-    var res = Buffer.Buffer<(Text, FanID, Int, Nat, Text)>(2);
-
-    for((key, value) in Map.entries(contentPaymentMap)){
-      for(eachId in Iter.fromArray(contentIds)){
-        if(key == eachId){
-          for((a, b) in Map.entries(value)){
-            if(a == artist){
-              for((k,v) in Map.entries(b)){
-                  var fanId: FanID = k;
-                  var timestamp: Int = v.0;
-                  var amount: Nat = v.1;
-                  var ticker: Text = v.2;
-                  res.add(eachId, fanId, timestamp, amount, ticker);
-                }
-            }
-          }
-        };
-      };
+      }
     };
     return Buffer.toArray(res);
   };
 
 
-  public func getAllFanContentPayments(fan: FanID) : async [(Text, Int, Nat, Text)]{ 
+  public func getAllFanContentPayments(fan: Principal) : async [(Text, Int, Nat, Text)]{ 
     
     var res = Buffer.Buffer<(Text, Int, Nat, Text)>(2);
 
@@ -445,21 +262,6 @@ actor TicketNFTMarketplace = {
           }
         };
       }; 
-    };
-    return Buffer.toArray(res);
-  };
-
-  public func getAllTicketNFTs() : async [(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text)] {
-    var res = Buffer.Buffer<(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text)>(2);
-    for ((key, value) in Map.entries(nfts)) {
-      switch(await getTicketMetaData(key)) {
-        case(?ticket) {
-          res.add(key, ticket.name, ticket.location, ticket.eventDate, ticket.eventTime, ticket.description, ticket.totalSupply, ticket.price, ticket.ticker);
-        };
-        case (null) {
-
-        };
-      };
     };
     return Buffer.toArray(res);
   };

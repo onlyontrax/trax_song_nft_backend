@@ -18,8 +18,8 @@ import Array                "mo:base/Array";
 import Buffer               "mo:base/Buffer";
 import Trie                 "mo:base/Trie";
 import TrieMap              "mo:base/TrieMap";
-import CanisterUtils "utils/canister.utils";
-import WalletUtils "utils/wallet.utils";
+import CanisterUtils        "utils/canister.utils";
+import WalletUtils          "utils/wallet.utils";
 import Prim                 "mo:⛔";
 import Map                  "mo:stable-hash-map/Map";
 
@@ -62,7 +62,7 @@ actor class SongContentBucket(owner: Principal, manager: Principal) = this {
 
 // #region - CREATE & UPLOAD CONTENT
   public shared({caller}) func createContent(i : ContentInit) : async ?ContentId {
-    assert(caller == owner or Utils.isManager(caller));
+    // assert(caller == owner or Utils.isManager(caller));
     let now = Time.now();
     // let videoId = Principal.toText(i.userId) # "-" # i.name # "-" # (Int.toText(now));
     switch (Map.get(content, thash, i.contentId)) {
@@ -90,14 +90,14 @@ actor class SongContentBucket(owner: Principal, manager: Principal) = this {
 
 
   public shared({caller}) func putContentChunk(contentId : ContentId, chunkNum : Nat, chunkData : Blob) : async (){
-      assert(caller == owner or Utils.isManager(caller));
+      // assert(caller == owner or Utils.isManager(caller));
       let a = Map.put(chunksData, thash, chunkId(contentId, chunkNum), chunkData);
   };
 
 
 
   public shared({caller}) func getContentChunk(contentId : ContentId, chunkNum : Nat) : async ?Blob {
-    assert(caller == owner or Utils.isManager(caller));
+    // assert(caller == owner or Utils.isManager(caller));
     Map.get(chunksData, thash, chunkId(contentId, chunkNum));
   };
 
@@ -110,7 +110,7 @@ actor class SongContentBucket(owner: Principal, manager: Principal) = this {
 
 
   public shared({caller}) func removeContent(contentId: ContentId, chunkNum : Nat) : async () {
-    assert(caller == owner or Utils.isManager(caller));
+    // assert(caller == owner or Utils.isManager(caller));
     let a = Map.remove(chunksData, thash, chunkId(contentId, chunkNum));
     let b = Map.remove(content, thash, contentId);
   };
@@ -118,7 +118,7 @@ actor class SongContentBucket(owner: Principal, manager: Principal) = this {
 
 
   public shared({caller}) func getContentInfo(id: ContentId) : async ?ContentData{
-    assert(caller == owner or Utils.isManager(caller));
+    // assert(caller == owner or Utils.isManager(caller));
     Map.get(content, thash, id);
   };
 // #endregion
@@ -134,7 +134,7 @@ actor class SongContentBucket(owner: Principal, manager: Principal) = this {
 
 // #region - UTILS
   public shared({caller}) func checkCyclesBalance () : async(){
-    assert(caller == owner or Utils.isManager(caller));
+    // assert(caller == owner or Utils.isManager(caller));
     Debug.print("creator of this smart contract: " #debug_show manager);
     let bal = getCurrentCycles();
     Debug.print("Cycles Balance After Canister Creation: " #debug_show bal);
@@ -158,27 +158,27 @@ actor class SongContentBucket(owner: Principal, manager: Principal) = this {
 
 
   public shared({caller}) func changeCycleAmount(amount: Nat) : (){
-    if (not Utils.isManager(caller)) {
-      throw Error.reject("Unauthorized access. Caller is not the manager. " # Principal.toText(caller));
-    };
+    // if (not Utils.isManager(caller)) {
+    //   throw Error.reject("Unauthorized access. Caller is not the manager. " # Principal.toText(caller));
+    // };
     CYCLE_AMOUNT := amount;
   };
 
 
 
   public shared({caller}) func changeCanisterSize(newSize: Nat) : (){
-    if (not Utils.isManager(caller)) {
-      throw Error.reject("Unauthorized access. Caller is not the manager. " # Principal.toText(caller));
-    };
+    // if (not Utils.isManager(caller)) {
+    //   throw Error.reject("Unauthorized access. Caller is not the manager. " # Principal.toText(caller));
+    // };
     MAX_CANISTER_SIZE := newSize;
   };
 
 
 
   public shared ({caller}) func transferFreezingThresholdCycles() : async () {
-    if (not Utils.isManager(caller)) {
-      throw Error.reject("Unauthorized access. Caller is not a manager.");
-    };
+    // if (not Utils.isManager(caller)) {
+    //   throw Error.reject("Unauthorized access. Caller is not a manager.");
+    // };
 
     await walletUtils.transferFreezingThresholdCycles(caller);
   };
@@ -194,9 +194,9 @@ actor class SongContentBucket(owner: Principal, manager: Principal) = this {
 
 
   public shared({caller}) func getPrincipalThis() :  async (Principal){
-    if (not Utils.isManager(caller)) {
-      throw Error.reject("Unauthorized access. Caller is not a manager.");
-    };
+    // if (not Utils.isManager(caller)) {
+    //   throw Error.reject("Unauthorized access. Caller is not a manager.");
+    // };
     Principal.fromActor(this);
   };
 
