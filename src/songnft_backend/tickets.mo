@@ -21,9 +21,10 @@ import Map  "mo:stable-hash-map/Map";
 
 // Define the smart contract
 actor TicketNFTMarketplace = {
-  type Percentage = Float;
-  type ArtistID = Principal;
-  type FanID = Principal;
+  type ArtistID = T.ArtistID;
+  type FanID = T.FanID;
+  type Percentage = T.Percentage;
+  type Participants = T.Participants;
   type TransferArgs              = T.TransferArgs;
   type GetBlocksArgs             = T.GetBlocksArgs;
   type Result_1                  = T.Result_1;
@@ -31,6 +32,7 @@ actor TicketNFTMarketplace = {
   type QueryBlocksResponse       = T.QueryBlocksResponse;
   type Tokens                    = T.Tokens;
   type AccountIdentifier         = T.AccountIdentifier;
+  type TicketMetaData = T.TicketMetaData;
 
   let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
@@ -39,10 +41,6 @@ actor TicketNFTMarketplace = {
     };
 
   let FEE : Nat64 = 10000;
-  type Participants = {
-    participantID: ArtistID;
-    participantPercentage: Percentage;
-  };
 
   type NFT = {
     id: Text;
@@ -51,22 +49,6 @@ actor TicketNFTMarketplace = {
   };
 
   let { ihash; nhash; thash; phash; calcHash } = Map;
-
-  // Define the NFT metadata struct
-  type TicketMetaData = {
-    id: Text;
-    eventDate: Text;
-    eventTime: Text;
-    name: Text;
-    location: Text;
-    description: Text;
-    totalSupply: Nat;
-    price: Nat64;
-    royalty: [Participants];
-    ticker: Text;
-    status: Text;
-    schedule: Time.Time;
-  };
 
   // Define the marketplace fee
   let marketplaceFee = 10;

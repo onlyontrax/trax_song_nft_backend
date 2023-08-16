@@ -3,12 +3,52 @@ import Map "mo:base/HashMap";
 import Principal "mo:base/Principal";
 import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
+import Time "mo:base/Time";
 import Text "mo:base/Text";
 import Iter "mo:base/Iter";
 import Float "mo:base/Float";
 import Result "mo:base/Result";
 
 module Types {
+    public type ArtistID = Principal;
+    public type FanID = Principal;
+    public type Percentage = Float;
+    public type User = Principal;
+    public type Participants = {
+        participantID: ArtistID;
+        participantPercentage: Percentage;
+    };
+    public type MintRequest = {
+        to : User;
+        metadata : ?Blob;
+    };
+    public type TokenIdentifier  = Text;
+    public type TokenIndex = Nat32;
+    public type SongMetaData = {
+        id: Text;
+        name: Text;
+        description: Text;
+        totalSupply: Nat;
+        price: Nat64;
+        ticker: Text;
+        royalty: [Participants];
+        status: Text;
+        schedule: Time.Time;
+    };
+    public type TicketMetaData = {
+        id: Text;
+        eventDate: Text;
+        eventTime: Text;
+        name: Text;
+        location: Text;
+        description: Text;
+        totalSupply: Nat;
+        price: Nat64;
+        royalty: [Participants];
+        ticker: Text;
+        status: Text;
+        schedule: Time.Time;
+    };
     public type SubAccount = Blob;
     public type SubaccountNat8Arr = [Nat8];
     public type Memo = Nat64;
@@ -203,4 +243,16 @@ module Types {
         };
     };
     // #endregion
+
+    public type StatusRequest = {
+        cycles: Bool;
+        memory_size: Bool;
+        heap_memory_size: Bool;
+    };
+
+    public type StatusResponse = {
+        cycles: ?Nat;
+        memory_size: ?Nat;
+        heap_memory_size: ?Nat;
+    }; 
 };

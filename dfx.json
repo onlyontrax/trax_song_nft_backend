@@ -11,14 +11,6 @@
         }
       }
     },
-    "songnft_backend": {
-      "main": "src/songnft_backend/songs.mo",
-      "type": "motoko"
-    },
-    "ticketnft_backend": {
-      "main": "src/songnft_backend/tickets.mo",
-      "type": "motoko"
-    },
     "internet_identity": {
       "type": "custom",
       "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
@@ -31,9 +23,13 @@
         }
       }
     },
+    "traxNFT": {
+      "main": "src/songnft_backend/nft.mo",
+      "type": "motoko"
+    },
     "songnft_frontend": {
       "dependencies": [
-        "songnft_backend"
+        "traxNFT"
       ],
       "frontend": {
         "entrypoint": "src/songnft_frontend/src/index.html"
