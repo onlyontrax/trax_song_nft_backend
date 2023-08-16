@@ -38,6 +38,8 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
   type ArtistToFan = Map.Map<ArtistID, FanToTime>;
   type TokenIndex = T.TokenIndex;
   type TokenIdentifier = T.TokenIdentifier;
+  type CommonError = T.CommonError;
+  
   let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
         transfer : shared TransferArgs -> async  Result_1;
