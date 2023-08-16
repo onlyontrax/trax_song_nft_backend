@@ -265,4 +265,15 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
     };
     return Buffer.toArray(res);
   };
+
+  public query func bearer(token : TokenIdentifier) : async Result.Result<Principal, CommonError> {
+		switch(Map.get(tokenList, thash, token)) {
+      case(?userId) {
+        return #ok(userId);
+      };
+      case (null) {
+        return #err(#InvalidToken(token));
+      };
+    };
+	};
 }
