@@ -50,6 +50,8 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
   type StatusResponse = T.StatusResponse;
   type ContentInit = T.ContentInit;
   type ContentId = T.ContentId;
+  type CommonError = T.CommonError;
+
   let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
         transfer : shared TransferArgs -> async  Result_1;
@@ -528,4 +530,15 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
       case null null;
     };
   };
+
+  public query func bearer(token : TokenIdentifier) : async Result.Result<Principal, CommonError> {
+		switch(Map.get(tokenList, thash, token)) {
+      case(?userId) {
+        return #ok(userId);
+      };
+      case (null) {
+        return #err(#InvalidToken(token));
+      };
+    };
+	};
 }

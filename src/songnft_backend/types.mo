@@ -27,6 +27,10 @@ module Types {
     };
     public type TokenIdentifier  = Text;
     public type TokenIndex = Nat32;
+    public type CommonError = {
+        #InvalidToken: TokenIdentifier;
+        #Other : Text;
+    };
     public type SongMetaData = {
         id: Text;
         name: Text;
@@ -52,6 +56,7 @@ module Types {
         status: Text;
         schedule: Time.Time;
     };
+
     public type SubAccount = Blob;
     public type SubaccountNat8Arr = [Nat8];
     public type Memo = Nat64;
@@ -301,7 +306,7 @@ module Types {
       // thumbnail: ?Thumbnail;
       // trailer: ?Trailer;
     };
-    
+
     public type Thumbnail = {
       name: Text;
       extension: FileExtension;
