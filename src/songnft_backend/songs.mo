@@ -21,7 +21,6 @@ import Buffer     "mo:base/Buffer";
 import Hex        "./utils/Hex";
 import Map  "mo:stable-hash-map/Map";
 import Nat32 "mo:base/Nat32";
-import SongContentBucket "song-content";
 import IC                   "ic.types";
 import Prim "mo:⛔";
 import B                    "mo:stable-buffer/StableBuffer";
@@ -48,9 +47,10 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
   type TokenIdentifier = T.TokenIdentifier;
   type StatusRequest = T.StatusRequest;
   type StatusResponse = T.StatusResponse;
-  type ContentInit = T.ContentInit;
-  type ContentId = T.ContentId;
   type CommonError = T.CommonError;
+  type ChunkId = T.ChunkId;
+  type ChunkData = T.ChunkData;
+  type ExtMetadata = T.ExtMetadata;
 
   let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
@@ -58,7 +58,7 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
         account_balance : shared query BinaryAccountBalanceArgs -> async Tokens;
     };
   let FEE : Nat64 = 10000;
-  let { ihash; nhash; thash; phash; calcHash } = Map;
+  let { ihash; nhash; n32hash; thash; phash; calcHash } = Map;
   private let ic : IC.Self = actor "aaaaa-aa";
   
   let marketplaceFee = 10;
@@ -78,10 +78,12 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
   private var fanNFTWallet = Map.new<Principal, [Text]>(phash);
   private var contentPaymentMap = Map.new<Text, ArtistToFan>(thash); 
 
-  private stable var tokenList = Map.new<Text, Principal>(thash);
-  private stable var supply = 0;
-  private let contentCanisterIds = B.init<CanisterId>();
-  private let contentToCanister = Map.new<ContentId, CanisterId>(thash);
+  private stable var _registry = Map.new<TokenIndex, Principal>(n32hash);
+  private stable var _supply = 0;
+  private stable var _owners = Map.new<Principal, [TokenIndex]>(phash);
+  private stable var _tokenMetadata  = Map.new<TokenIndex, ExtMetadata>(n32hash);
+
+  private var chunksData = Map.new<ChunkId, ChunkData>(thash);
 
   public query func getFanSongs(fan: Principal) : async ?[Text] {
     return Map.get(fanNFTWallet, phash, fan);
@@ -98,134 +100,22 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
       };case null return false;
     };
   };
-  
-  public shared({caller}) func createContent(i : ContentInit) : async ?(ContentId, Principal) {
+
+  public shared({caller}) func putContentChunk(chunkNum : Nat, chunkData : Blob) : async (){
+      // assert(caller == owner or Utils.isManager(caller));
+      let a = Map.put(chunksData, thash, chunkId(chunkNum), chunkData);
+  };
+
+  public shared({caller}) func getContentChunk(chunkNum : Nat) : async ?Blob {
     // assert(caller == owner or Utils.isManager(caller));
-
-    var uploaded : Bool = false;
-    for(canisters in B.vals(contentCanisterIds)){
-      Debug.print("canister: " # debug_show canisters);
-
-      let availableMemory: ?Nat = await getAvailableMemoryCanister(canisters);
-
-      switch(await getAvailableMemoryCanister(canisters)){
-        case(?availableMemory){
-          if(availableMemory > i.size){
-
-            let can = actor(Principal.toText(canisters)): actor { 
-              createContent: (ContentInit) -> async (?ContentId);
-            };
-
-            switch(await can.createContent(i)){
-              case(?contentId){ 
-                let a = Map.put(contentToCanister, thash, contentId, canisters);
-                uploaded := true;
-                return ?(contentId, canisters);
-              };
-              case null { 
-                return null
-              };
-            };
-          };
-        };
-        case null return null;
-      };
-    };
-
-    if(uploaded == false){
-      switch(await createStorageCanister(i.userId)){
-        case(?canID){
-          B.add(contentCanisterIds, canID);
-          let newCan = actor(Principal.toText(canID)): actor { 
-            createContent: (ContentInit) -> async (?ContentId);
-          };
-          switch(await newCan.createContent(i)){
-            case(?contentId){ 
-              let a = Map.put(contentToCanister, thash, contentId, canID);
-              uploaded := true;
-              return ?(contentId, canID)  
-            };
-            case null { 
-              return null
-            };
-          };
-        };
-        case null return null;
-      }
-    }else{
-      return null;
-    }
+    Map.get(chunksData, thash, chunkId(chunkNum));
   };
 
-  private func createStorageCanister(owner: UserId) : async ?(Principal) {
-    await checkCyclesBalance();
-    Debug.print(debug_show Principal.toText(owner));
-    Cycles.add(CYCLE_AMOUNT);
-
-    var canisterId: ?Principal = null;
-
-    let b = await SongContentBucket.SongContentBucket(owner, managerCanister);
-    canisterId := ?(Principal.fromActor(b));
-
-    switch (canisterId) {
-      case null {
-        throw Error.reject("Bucket init error");
-      };
-      case (?canisterId) {
-
-        let self: Principal = Principal.fromActor(this);
-
-        let controllers: ?[Principal] = ?[canisterId, owner, self];
-
-        let cid = { canister_id = Principal.fromActor(this)};
-        Debug.print("IC status..."  # debug_show(await ic.canister_status(cid)));
-        
-        await ic.update_settings(({canister_id = canisterId; 
-          settings = {
-            controllers = controllers;
-            freezing_threshold = null;
-            memory_allocation = null;
-            compute_allocation = null;
-          }}));
-      };
-    };
-    return canisterId;
+  private func chunkId(chunkNum : Nat) : ChunkId {
+    "chunk" # (Nat.toText(chunkNum))
   };
 
-  public shared({caller}) func removeContent(contentId: ContentId, chunkNum : Nat) : async () {
-    // assert(caller == owner or Utils.isManager(caller));
-    switch(Map.get(contentToCanister, thash, contentId)){
-      case(?canID){
-        let can = actor(Principal.toText(canID)): actor { 
-          removeContent: (ContentId, Nat) -> async ();
-        };
-        await can.removeContent(contentId, chunkNum);
-        let a = Map.remove(contentToCanister, thash, contentId);
-      };
-      case null { };
-    };
-  };
-
-  public shared({caller}) func getCanisterOfContent(contentId: ContentId) : async ?(CanisterId){
-    // assert(caller == owner or Utils.isManager(caller));
-    Map.get(contentToCanister, thash, contentId);
-  };
-
-  public shared({caller}) func getEntriesOfCanisterToContent() : async [(CanisterId, ContentId)]{
-    // assert(caller == owner or Utils.isManager(caller));
-    var res = Buffer.Buffer<(CanisterId, ContentId)>(2);
-    for((key, value) in Map.entries(contentToCanister)){
-      var contentId : ContentId = key;
-      var canisterId : CanisterId = value;
-      res.add(canisterId, contentId);
-    };       
-    return Buffer.toArray(res);
-  };
-
-  public shared({caller}) func getAllContentCanisters() : async [CanisterId]{
-    // assert(caller == owner or Utils.isManager(caller));
-    B.toArray(contentCanisterIds);
-  };
+// Ext standard functions
 
   // Mint an NFT
   public shared({caller}) func mintNFT(request: T.MintRequest) : async Text {
@@ -233,7 +123,7 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
     switch (canisterSong) {
       case (null) { return "error"; };
       case (?metadata) {
-        if (supply >= metadata.totalSupply and metadata.totalSupply != 0) {
+        if (_supply >= metadata.totalSupply and metadata.totalSupply != 0) {
           return "total supply error";
         };
         // assert(metadata.status == "active", "NFT is not available for sale");
@@ -253,30 +143,23 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
           case (null) { var c = Map.put(fanNFTWallet, phash, caller, [metadata.id]); };
           case (?nftArray) { var c = Map.put(fanNFTWallet, phash, caller, Array.append<Text>(nftArray, [metadata.id])); };
         };
+        
+        switch (Map.get(_owners, phash, owner)) {
+          case (null) { var c = Map.put(_owners, phash, caller, [_nextTokenId]); };
+          case (?nftArray) { var c = Map.put(_owners, phash, caller, Array.append<TokenIndex>(nftArray, [_nextTokenId])); };
+        };
 
-        token := metadata.id # Nat32.toText(_nextTokenId);
-        var d = Map.put(tokenList, thash, token, request.to);
+        var d = Map.put(_registry, n32hash, _nextTokenId, request.to);
+
+        let md : ExtMetadata = #nonfungible({
+          metadata = request.metadata;
+        }); 
+        var e = Map.put(_tokenMetadata, n32hash, _nextTokenId, md);
       };
     };
-    supply := supply + 1;
+    _supply := _supply + 1;
     _nextTokenId := _nextTokenId + 1;
     return token;
-  };
-
-  private func platformDeduction(amount : Nat64) : async Nat64 {
-    let fee = await getDeductedAmount(amount, 0.10);
-    // Debug.print("deducted amount: " # debug_show fee);
-    
-    switch(await transfer(marketplaceFeeRecipient, fee)){
-      case(#ok(res)){
-        Debug.print("Fee of: " # debug_show fee # " paid to trax account: " # debug_show marketplaceFeeRecipient # " in block: " # debug_show res);
-      };case(#err(msg)){
-        throw Error.reject("Unexpected error: " # debug_show msg);
-      }
-    };
-
-    let amountAfterDeduction = await getRemainingAfterDeduction(amount, 0.10);
-    return amountAfterDeduction;
   };
 
   private func transfer(to: Principal, amount: Nat64): async Result.Result<Nat64, Text>{
@@ -312,6 +195,81 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
             return #err("Unexpected error: " # debug_show other);
           };
         };
+  };
+
+  public query func bearer(token : TokenIdentifier) : async Result.Result<Principal, CommonError> {
+		if (T.TokenIdentifier.isPrincipal(token, Principal.fromActor(this)) == false) {
+			return #err(#InvalidToken(token));
+		};
+		let tokenind = T.TokenIdentifier.getIndex(token);
+    switch (Map.get(_registry, n32hash, tokenind)) {
+      case (?token_owner) {
+				return #ok(token_owner);
+      };
+      case (_) {
+        return #err(#InvalidToken(token));
+      };
+    };
+	};
+
+  public query func getMinter() : async Principal {
+    return _minter;
+  };
+
+  public func supply() : async Result.Result<Nat, CommonError> {
+    return #ok(_supply);
+  };
+
+  public func getRegistry() : async [(TokenIndex, Principal)] {
+    Iter.toArray(Map.entries(_registry));
+  };
+
+  public func getTokens() : async [(TokenIndex, ExtMetadata)] {
+    var resp : Buffer.Buffer<(TokenIndex, ExtMetadata)> = Buffer.Buffer(0);
+      for (e in Map.entries(_registry)) {
+        resp.add((e.0, #nonfungible({ metadata = null })));
+      };
+      Buffer.toArray(resp);
+  };
+
+  public func tokens(aid : Principal) : async Result.Result<[TokenIndex], CommonError> {
+    switch (Map.get(_owners, phash, aid)) {
+      case (?tokens) return #ok(tokens);
+      case (_) return #err(#Other("No tokens"));
+    };
+  };
+  
+  public query func metadata(token : TokenIdentifier) : async Result.Result<ExtMetadata, CommonError> {
+    if (T.TokenIdentifier.isPrincipal(token, Principal.fromActor(this)) == false) {
+			return #err(#InvalidToken(token));
+		};
+		let tokenind = T.TokenIdentifier.getIndex(token);
+    switch (Map.get(_tokenMetadata, n32hash, tokenind)) {
+      case (?token_metadata) {
+				return #ok(token_metadata);
+      };
+      case (_) {
+        return #err(#InvalidToken(token));
+      };
+    };
+  };
+
+// Sub functions
+
+  private func platformDeduction(amount : Nat64) : async Nat64 {
+    let fee = await getDeductedAmount(amount, 0.10);
+    // Debug.print("deducted amount: " # debug_show fee);
+    
+    switch(await transfer(marketplaceFeeRecipient, fee)){
+      case(#ok(res)){
+        Debug.print("Fee of: " # debug_show fee # " paid to trax account: " # debug_show marketplaceFeeRecipient # " in block: " # debug_show res);
+      };case(#err(msg)){
+        throw Error.reject("Unexpected error: " # debug_show msg);
+      }
+    };
+
+    let amountAfterDeduction = await getRemainingAfterDeduction(amount, 0.10);
+    return amountAfterDeduction;
   };
 
   private func getRemainingAfterDeduction(amount: Nat64, percent: Float) : async(Nat64){
@@ -461,25 +419,17 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
     MAX_CANISTER_SIZE := newSize;
   };
 
-
-
   private func getCurrentHeapMemory(): Nat {
     Prim.rts_heap_size();
   };
-
-
 
   private func getCurrentMemory(): Nat {
     Prim.rts_memory_size();
   };
 
-
-
   private func getCurrentCycles(): Nat {
     Cycles.balance();
   };
-
-
 
   public func getStatus(request: ?StatusRequest): async ?StatusResponse {
     switch(request) {
@@ -530,15 +480,4 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
       case null null;
     };
   };
-
-  public query func bearer(token : TokenIdentifier) : async Result.Result<Principal, CommonError> {
-		switch(Map.get(tokenList, thash, token)) {
-      case(?userId) {
-        return #ok(userId);
-      };
-      case (null) {
-        return #err(#InvalidToken(token));
-      };
-    };
-	};
 }

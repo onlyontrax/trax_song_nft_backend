@@ -39,6 +39,7 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
   type TokenIndex = T.TokenIndex;
   type TokenIdentifier = T.TokenIdentifier;
   type CommonError = T.CommonError;
+  type ExtMetadata = T.ExtMetadata;
   
   let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
@@ -46,7 +47,7 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
         account_balance : shared query BinaryAccountBalanceArgs -> async Tokens;
     };
   let FEE : Nat64 = 10000;
-  let { ihash; nhash; thash; phash; calcHash } = Map;
+  let { ihash; nhash; thash; n32hash; phash; calcHash } = Map;
   
   let marketplaceFee = 10;
   let marketplaceFeeRecipient = Principal.fromText("c2v5t-vzv25-xvigb-jhc7d-whtnk-xhgrc-cesv5-lrnrp-grfrj-i6j3z-aae");
@@ -60,8 +61,10 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
   private var fanNFTWallet = Map.new<Principal, [Text]>(phash);
   private var contentPaymentMap = Map.new<Text, ArtistToFan>(thash); 
 
-  private stable var tokenList = Map.new<Text, Principal>(thash);
-  private stable var supply = 0;
+  private stable var _registry = Map.new<TokenIndex, Principal>(n32hash);
+  private stable var _supply = 0;
+  private stable var _owners = Map.new<Principal, [TokenIndex]>(phash);
+  private stable var _tokenMetadata  = Map.new<TokenIndex, ExtMetadata>(n32hash);
 
   public query func getFanTickets(fan: Principal) : async ?[Text] {
     return Map.get(fanNFTWallet, phash, fan);
@@ -85,7 +88,7 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
     switch (canisterTicket) {
       case (null) { return "error"; };
       case (?metadata) {
-        if (supply >= metadata.totalSupply and metadata.totalSupply != 0) {
+        if (_supply >= metadata.totalSupply and metadata.totalSupply != 0) {
           return "total supply error";
         };
         // assert(metadata.status == "active", "NFT is not available for sale");
@@ -105,30 +108,23 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
           case (null) { var c = Map.put(fanNFTWallet, phash, caller, [metadata.id]); };
           case (?nftArray) { var c = Map.put(fanNFTWallet, phash, caller, Array.append<Text>(nftArray, [metadata.id])); };
         };
+        
+        switch (Map.get(_owners, phash, owner)) {
+          case (null) { var c = Map.put(_owners, phash, caller, [_nextTokenId]); };
+          case (?nftArray) { var c = Map.put(_owners, phash, caller, Array.append<TokenIndex>(nftArray, [_nextTokenId])); };
+        };
 
-        token := metadata.id # Nat32.toText(_nextTokenId);
-        var d = Map.put(tokenList, thash, token, request.to);
+        var d = Map.put(_registry, n32hash, _nextTokenId, request.to);
+
+        let md : ExtMetadata = #nonfungible({
+          metadata = request.metadata;
+        }); 
+        var e = Map.put(_tokenMetadata, n32hash, _nextTokenId, md);
       };
     };
-    supply := supply + 1;
+    _supply := _supply + 1;
     _nextTokenId := _nextTokenId + 1;
     return token;
-  };
-
-  private func platformDeduction(amount : Nat64) : async Nat64 {
-    let fee = await getDeductedAmount(amount, 0.10);
-    // Debug.print("deducted amount: " # debug_show fee);
-    
-    switch(await transfer(marketplaceFeeRecipient, fee)){
-      case(#ok(res)){
-        Debug.print("Fee of: " # debug_show fee # " paid to trax account: " # debug_show marketplaceFeeRecipient # " in block: " # debug_show res);
-      };case(#err(msg)){
-        throw Error.reject("Unexpected error: " # debug_show msg);
-      }
-    };
-
-    let amountAfterDeduction = await getRemainingAfterDeduction(amount, 0.10);
-    return amountAfterDeduction;
   };
 
   private func transfer(to: Principal, amount: Nat64): async Result.Result<Nat64, Text>{
@@ -164,6 +160,79 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
             return #err("Unexpected error: " # debug_show other);
           };
         };
+  };
+
+  public query func bearer(token : TokenIdentifier) : async Result.Result<Principal, CommonError> {
+		if (T.TokenIdentifier.isPrincipal(token, Principal.fromActor(this)) == false) {
+			return #err(#InvalidToken(token));
+		};
+		let tokenind = T.TokenIdentifier.getIndex(token);
+    switch (Map.get(_registry, n32hash, tokenind)) {
+      case (?token_owner) {
+				return #ok(token_owner);
+      };
+      case (_) {
+        return #err(#InvalidToken(token));
+      };
+    };
+	};
+  
+  public query func getMinter() : async Principal {
+    return _minter;
+  };
+  
+  public func supply() : async Result.Result<Nat, CommonError> {
+    return #ok(_supply);
+  };
+
+  public func getRegistry() : async [(TokenIndex, Principal)] {
+    Iter.toArray(Map.entries(_registry));
+  };
+
+  public func getTokens() : async [(TokenIndex, ExtMetadata)] {
+    var resp : Buffer.Buffer<(TokenIndex, ExtMetadata)> = Buffer.Buffer(0);
+      for (e in Map.entries(_registry)) {
+        resp.add((e.0, #nonfungible({ metadata = null })));
+      };
+      Buffer.toArray(resp);
+  };
+
+  public func tokens(aid : Principal) : async Result.Result<[TokenIndex], CommonError> {
+    switch (Map.get(_owners, phash, aid)) {
+      case (?tokens) return #ok(tokens);
+      case (_) return #err(#Other("No tokens"));
+    };
+  };
+  
+  public query func metadata(token : TokenIdentifier) : async Result.Result<ExtMetadata, CommonError> {
+    if (T.TokenIdentifier.isPrincipal(token, Principal.fromActor(this)) == false) {
+			return #err(#InvalidToken(token));
+		};
+		let tokenind = T.TokenIdentifier.getIndex(token);
+    switch (Map.get(_tokenMetadata, n32hash, tokenind)) {
+      case (?token_metadata) {
+				return #ok(token_metadata);
+      };
+      case (_) {
+        return #err(#InvalidToken(token));
+      };
+    };
+  };
+
+  private func platformDeduction(amount : Nat64) : async Nat64 {
+    let fee = await getDeductedAmount(amount, 0.10);
+    // Debug.print("deducted amount: " # debug_show fee);
+    
+    switch(await transfer(marketplaceFeeRecipient, fee)){
+      case(#ok(res)){
+        Debug.print("Fee of: " # debug_show fee # " paid to trax account: " # debug_show marketplaceFeeRecipient # " in block: " # debug_show res);
+      };case(#err(msg)){
+        throw Error.reject("Unexpected error: " # debug_show msg);
+      }
+    };
+
+    let amountAfterDeduction = await getRemainingAfterDeduction(amount, 0.10);
+    return amountAfterDeduction;
   };
 
   private func getRemainingAfterDeduction(amount: Nat64, percent: Float) : async(Nat64){
@@ -267,15 +336,4 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
     };
     return Buffer.toArray(res);
   };
-
-  public query func bearer(token : TokenIdentifier) : async Result.Result<Principal, CommonError> {
-		switch(Map.get(tokenList, thash, token)) {
-      case(?userId) {
-        return #ok(userId);
-      };
-      case (null) {
-        return #err(#InvalidToken(token));
-      };
-    };
-	};
 }

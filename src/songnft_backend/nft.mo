@@ -31,6 +31,8 @@ actor traxNFT {
         productType: Text;
         canisterId: Principal;
     };
+
+    type IdToNFT = Map.Map<Text, NFT>;
     let { ihash; nhash; thash; phash; calcHash } = Map;
 
     private let ic : IC.Self = actor "aaaaa-aa";
@@ -45,8 +47,27 @@ actor traxNFT {
     private var ticketNfts = Map.new<Text, TicketMetaData>(thash);
     private var artistSongNFTs = Map.new<Principal, [Text]>(phash);
     private var artistTicketNFTs = Map.new<Principal, [Text]>(phash);
+    private var _owners = Map.new<Principal, IdToNFT>(phash);
+
     public query func getArtistSongs(artist: Principal) : async ?[Text] {
         return Map.get(artistSongNFTs, phash, artist);
+    };
+
+    public query func getArtistNfts(artist: Principal) : async [(Text, Text, Principal)] {
+      var res = Buffer.Buffer<(Text, Text, Principal)>(2);
+
+      switch (Map.get(_owners, phash, artist)) {
+        case (null) {
+
+        };
+        case (?nfts) {
+          for ((key, nft) in Map.entries(nfts)) {
+            res.add(key, nft.productType, nft.canisterId);
+          }
+        };
+      };
+
+      return Buffer.toArray(res);
     };
     
     public shared({caller}) func createSong(userId: Principal, metadata: SongMetaData) : async (Principal) {
@@ -61,6 +82,10 @@ actor traxNFT {
             status = metadata.status;
             ticker = metadata.ticker;
             schedule = metadata.schedule;
+            logo = metadata.logo;
+            size = metadata.size;
+            chunkCount = metadata.chunkCount;
+            extension = metadata.extension;
         };
 
         // Create Song Canister
@@ -109,6 +134,17 @@ actor traxNFT {
                     case (null) { var c = Map.put(artistSongNFTs, phash, userId, [song.id]); };
                     case (?nftArray) { var c = Map.put(artistSongNFTs, phash, userId, Array.append<Text>(nftArray, [song.id])); };
                 };
+                switch (Map.get(_owners, phash, userId)) {
+                  case (null) { 
+                    var idtonft = Map.new<Text, NFT>(thash);
+                    var c = Map.put(idtonft, thash, song.id, nft);
+                    var d = Map.put(_owners, phash, userId, idtonft);
+                  };
+                  case (?nfts) {
+                    var c = Map.put(nfts, thash, song.id, nft);
+                    var d = Map.put(_owners, phash, userId, nfts);
+                  };
+                };
 
                 return canisterId;
             };
@@ -132,6 +168,10 @@ actor traxNFT {
             status = metadata.status;
             ticker = metadata.ticker;
             schedule = metadata.schedule;
+            logo = metadata.logo;
+            size = metadata.size;
+            chunkCount = metadata.chunkCount;
+            extension = metadata.extension;
         };
 
         // Create Ticket Canister
@@ -180,7 +220,17 @@ actor traxNFT {
                     case (null) { var c = Map.put(artistTicketNFTs, phash, userId, [ticket.id]); };
                     case (?nftArray) { var c = Map.put(artistTicketNFTs, phash, userId, Array.append<Text>(nftArray, [ticket.id])); };
                 };
-
+                switch (Map.get(_owners, phash, userId)) {
+                  case (null) { 
+                    var idtonft = Map.new<Text, NFT>(thash);
+                    var c = Map.put(idtonft, thash, ticket.id, nft);
+                    var d = Map.put(_owners, phash, userId, idtonft);
+                  };
+                  case (?nfts) {
+                    var c = Map.put(nfts, thash, ticket.id, nft);
+                    var d = Map.put(_owners, phash, userId, nfts);
+                  };
+                };
                 return canisterId;
             };
         };
