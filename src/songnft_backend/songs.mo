@@ -24,6 +24,7 @@ import Nat32 "mo:base/Nat32";
 import IC                   "ic.types";
 import Prim "mo:⛔";
 import B                    "mo:stable-buffer/StableBuffer";
+import ICRC1T         "./ckbtcTypes";
 
 // Define the smart contract
 shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMetaData, artistAccount: Principal) = this {
@@ -51,13 +52,28 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
   type ChunkId = T.ChunkId;
   type ChunkData = T.ChunkData;
   type ExtMetadata = T.ExtMetadata;
+  type Account = T.Account;
+  type GetBlocksRequest          = ICRC1T.GetBlocksRequest;
+  type GetTransactionsResponse   = ICRC1T.GetTransactionsResponse;
+  type TransferArg               = ICRC1T.TransferArg;
+  type Result                    = ICRC1T.Result;
 
-  let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
+
+  let Ledger = actor "bkyz2-fmaaa-aaaaa-qaaaq-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
         transfer : shared TransferArgs -> async  Result_1;
         account_balance : shared query BinaryAccountBalanceArgs -> async Tokens;
     };
+
+  
+  let CkBTCLedger = actor "be2us-64aaa-aaaaa-qaabq-cai" : actor {
+       icrc1_transfer : shared TransferArg -> async Result;
+       icrc1_balance_of : shared query Account -> async Nat;
+       get_transactions : shared query GetBlocksRequest -> async GetTransactionsResponse;
+  };
+
   let FEE : Nat64 = 10000;
+  let FEE_CKBTC : Nat64           = 10;
   let { ihash; nhash; n32hash; thash; phash; calcHash } = Map;
   private let ic : IC.Self = actor "aaaaa-aa";
   
@@ -127,11 +143,19 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
           return "total supply error";
         };
         // assert(metadata.status == "active", "NFT is not available for sale");
-        let amountToSend = await platformDeduction(metadata.price - (FEE * 2)); 
+        let ticker = metadata.ticker;
+        var txFee: Nat64 = 0;
+        if (ticker == "ICP") {
+          txFee := FEE;
+        }
+        else if (ticker == "ckBTC") {
+          txFee := FEE_CKBTC;
+        };
+        let amountToSend = await platformDeduction(metadata.price - (txFee * 2), ticker); 
         var count : Nat64 = 0;
         for (collabs in Iter.fromArray(metadata.royalty)) {
-          let participantsCut : Nat64 = await getDeductedAmount(amountToSend - (FEE * count), collabs.participantPercentage);
-          switch(await transfer(collabs.participantID, participantsCut)){
+          let participantsCut : Nat64 = await getDeductedAmount(amountToSend - (txFee * count), collabs.participantPercentage);
+          switch(await transfer(collabs.participantID, participantsCut, ticker)){
               case(#ok(res)){ 
                 Debug.print("Paid artist: " # debug_show collabs.participantID #" amount: "# debug_show participantsCut #  " in block " # debug_show res);
                 await addToContentPaymentMap(metadata.id, collabs.participantID, metadata.ticker, caller, Nat64.toNat(participantsCut));
@@ -162,18 +186,20 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
     return token;
   };
 
-  private func transfer(to: Principal, amount: Nat64): async Result.Result<Nat64, Text>{
+  private func transfer(to: Principal, amount: Nat64, ticker: Text): async Result.Result<Nat64, Text>{
     // Debug.print(Nat.fromText(Principal.toText(from)));
     // add ticker argument
     let now = Time.now();
-    let res = await Ledger.transfer({
-          memo = txNo; 
-          from_subaccount = null;
-          to = Blob.toArray(Account.accountIdentifier(to, Account.defaultSubaccount()));
-          amount = { e8s = amount };
-          fee = { e8s = FEE };
-          created_at_time = ?{ timestamp_nanos = Nat64.fromNat(Int.abs(now)) };
-        });
+    try {
+      if (ticker == "ICP") {
+        let res = await Ledger.transfer({
+              memo = txNo; 
+              from_subaccount = null;
+              to = Blob.toArray(Account.accountIdentifier(to, Account.defaultSubaccount()));
+              amount = { e8s = amount };
+              fee = { e8s = FEE };
+              created_at_time = ?{ timestamp_nanos = Nat64.fromNat(Int.abs(now)) };
+            });
 
         Debug.print("res: "# debug_show res);
         
@@ -195,6 +221,37 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
             return #err("Unexpected error: " # debug_show other);
           };
         };
+      }
+      else {
+        let transferResult = await CkBTCLedger.icrc1_transfer(
+          {
+            amount = Nat64.toNat(amount);
+            from_subaccount = null;
+            created_at_time = null;
+            fee = ?10;
+            memo = null;
+            to = {
+              owner = to;
+              subaccount = null;
+            };
+          }
+        );
+
+        switch (transferResult) {
+          case (#Ok(transferResult)) {
+              txNo += 1;
+              Debug.print("@transfer: Paid recipient ckBTC: " # debug_show to # " in block " # debug_show transferResult);
+              return #ok(Nat64.fromNat(transferResult));
+          };
+          case (#Err(transferError)) {
+            return #err("@transfer: Couldn't transfer ckBTC funds to default account:\n" # debug_show (transferError));
+          };
+          
+        };
+      }
+    } catch (error : Error) {
+      return #err("@transfer: Reject message: " # Error.message(error));
+    };
   };
 
   public query func bearer(token : TokenIdentifier) : async Result.Result<Principal, CommonError> {
@@ -256,11 +313,11 @@ shared({caller = managerCanister}) actor class SongNFT(songMetaData: ?T.SongMeta
 
 // Sub functions
 
-  private func platformDeduction(amount : Nat64) : async Nat64 {
+  private func platformDeduction(amount : Nat64, ticker: Text) : async Nat64 {
     let fee = await getDeductedAmount(amount, 0.10);
     // Debug.print("deducted amount: " # debug_show fee);
     
-    switch(await transfer(marketplaceFeeRecipient, fee)){
+    switch(await transfer(marketplaceFeeRecipient, fee, ticker)){
       case(#ok(res)){
         Debug.print("Fee of: " # debug_show fee # " paid to trax account: " # debug_show marketplaceFeeRecipient # " in block: " # debug_show res);
       };case(#err(msg)){

@@ -37,7 +37,7 @@ actor traxNFT {
 
     private let ic : IC.Self = actor "aaaaa-aa";
     stable var MAX_CANISTER_SIZE: Nat = 48_000_000_000; // <-- approx. 48MB
-    stable var CYCLE_AMOUNT : Nat = 1_000_000_000_000;
+    stable var CYCLE_AMOUNT : Nat = 100_000_000_000;
     
     private let canisterUtils : CanisterUtils.CanisterUtils = CanisterUtils.CanisterUtils();
     private let walletUtils : WalletUtils.WalletUtils = WalletUtils.WalletUtils();
@@ -169,9 +169,6 @@ actor traxNFT {
             ticker = metadata.ticker;
             schedule = metadata.schedule;
             logo = metadata.logo;
-            size = metadata.size;
-            chunkCount = metadata.chunkCount;
-            extension = metadata.extension;
         };
 
         // Create Ticket Canister
@@ -250,12 +247,12 @@ actor traxNFT {
         return Map.get(nfts, thash, id);
     };
 
-    public func getAllSongNFTs() : async [(Text, Text, Text, Nat, Nat64, Text)] {
-        var res = Buffer.Buffer<(Text, Text, Text, Nat, Nat64, Text)>(2);
+    public func getAllSongNFTs() : async [(Text, Text, Text, Nat, Nat64, Text, Principal)] {
+        var res = Buffer.Buffer<(Text, Text, Text, Nat, Nat64, Text, Principal)>(2);
         for ((key, song) in Map.entries(songNfts)) {
             switch(await getNFT(key)) {
                 case(?nft) {
-                    res.add(key, song.name, song.description, song.totalSupply, song.price, song.ticker);
+                    res.add(key, song.name, song.description, song.totalSupply, song.price, song.ticker, nft.canisterId);
                 };
                 case (null) {
 
@@ -265,12 +262,12 @@ actor traxNFT {
         return Buffer.toArray(res);
     };
 
-    public func getAllTicketNFTs() : async [(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text)] {
-        var res = Buffer.Buffer<(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text)>(2);
+    public func getAllTicketNFTs() : async [(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text, Principal)] {
+        var res = Buffer.Buffer<(Text, Text, Text, Text, Text, Text, Nat, Nat64, Text, Principal)>(2);
         for ((key, ticket) in Map.entries(ticketNfts)) {
             switch(await getNFT(key)) {
                 case(?nft) {
-                    res.add(key, ticket.name, ticket.location, ticket.eventDate, ticket.eventTime, ticket.description, ticket.totalSupply, ticket.price, ticket.ticker);
+                    res.add(key, ticket.name, ticket.location, ticket.eventDate, ticket.eventTime, ticket.description, ticket.totalSupply, ticket.price, ticket.ticker, nft.canisterId);
                 };
                 case (null) {
 

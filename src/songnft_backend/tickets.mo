@@ -1,10 +1,11 @@
 import Principal "mo:base/Principal";
 import Array "mo:base/Array";
-import Result     "mo:base/Result";
+import Result "mo:base/Result";
 import Time "mo:base/Time";
 import Text "mo:base/Text";
 import Int "mo:base/Int";
 import Iter "mo:base/Iter";
+import Cycles "mo:base/ExperimentalCycles";
 import Hash "mo:base/Hash";
 import T "./types";
 import Bool "mo:base/Bool";
@@ -15,13 +16,15 @@ import Blob "mo:base/Blob";
 import List "mo:base/List";
 import Error "mo:base/Error";
 import Account "./utils/account";
-import Buffer     "mo:base/Buffer";
-import Hex        "./utils/Hex";
+import Buffer "mo:base/Buffer";
+import Hex "./utils/Hex";
 import Map  "mo:stable-hash-map/Map";
 import Nat32 "mo:base/Nat32";
+import Nat "mo:base/Nat";
+import Prim "mo:⛔";
 
 // Define the smart contract
-actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principal) = this {
+shared({caller = managerCanister}) actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principal) = this {
   type TransferArgs = T.TransferArgs;
   type GetBlocksArgs = T.GetBlocksArgs;
   type Result_1 = T.Result_1;
@@ -33,6 +36,7 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
   type ArtistID = T.ArtistID;
   type FanID = T.FanID;
   type Percentage = T.Percentage;
+  type CanisterId                = T.CanisterId;
   type Participants = T.Participants;
   type FanToTime = Map.Map<Principal, (Int, Nat, Text)>;
   type ArtistToFan = Map.Map<ArtistID, FanToTime>;
@@ -40,8 +44,16 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
   type TokenIdentifier = T.TokenIdentifier;
   type CommonError = T.CommonError;
   type ExtMetadata = T.ExtMetadata;
+  type StatusRequest = T.StatusRequest;
+  type StatusResponse = T.StatusResponse;
+
+
+  stable var MAX_CANISTER_SIZE: Nat =     48_000_000_000; // <-- approx. 40GB
+  stable var CYCLE_AMOUNT : Nat     =    100_000_000_000;
+  let maxCycleAmount                = 20_000_000_000_000;
+  let top_up_amount                 = 10_000_000_000_000;
   
-  let Ledger = actor "bd3sg-teaaa-aaaaa-qaaba-cai" : actor {
+  let Ledger = actor "bkyz2-fmaaa-aaaaa-qaaaq-cai" : actor {
         query_blocks : shared query GetBlocksArgs -> async QueryBlocksResponse;
         transfer : shared TransferArgs -> async  Result_1;
         account_balance : shared query BinaryAccountBalanceArgs -> async Tokens;
@@ -335,5 +347,112 @@ actor class TicketNFT(ticketMetaData: ?T.TicketMetaData, artistAccount: Principa
       }; 
     };
     return Buffer.toArray(res);
+  };
+
+  public shared({caller}) func checkCyclesBalance () : async(){
+    // assert(caller == owner or Utils.isManager(caller));
+    Debug.print("creator of this smart contract: " #debug_show managerCanister);
+    let bal = getCurrentCycles();
+    Debug.print("Cycles Balance After Canister Creation: " #debug_show bal);
+    if(bal < CYCLE_AMOUNT){
+       await transferCyclesToThisCanister();
+    };
+  };
+
+
+
+  private func wallet_receive() : async { accepted: Nat64 } {
+    let available = Cycles.available();
+    let accepted = Cycles.accept(Nat.min(available, top_up_amount));
+    { accepted = Nat64.fromNat(accepted) };
+  };
+
+  private func transferCyclesToThisCanister() : async (){
+    let self: Principal = Principal.fromActor(this);
+    let can = actor(Principal.toText(managerCanister)): actor { 
+      transferCycles: (CanisterId, Nat) -> async ();
+    };
+    let accepted = await wallet_receive();
+    await can.transferCycles(self, Nat64.toNat(accepted.accepted));
+  };
+
+
+
+  public shared({caller}) func changeCycleAmount(amount: Nat) : (){
+    // if (not Utils.isManager(caller)) {
+    //   throw Error.reject("Unauthorized access. Caller is not the manager. " # Principal.toText(caller));
+    // };
+    CYCLE_AMOUNT := amount;
+  };
+
+
+
+  public shared({caller}) func changeCanisterSize(newSize: Nat) : (){
+    // if (not Utils.isManager(caller)) {
+    //   throw Error.reject("Unauthorized access. Caller is not the manager. " # Principal.toText(caller));
+    // };
+    MAX_CANISTER_SIZE := newSize;
+  };
+
+  private func getCurrentHeapMemory(): Nat {
+    Prim.rts_heap_size();
+  };
+
+  private func getCurrentMemory(): Nat {
+    Prim.rts_memory_size();
+  };
+
+  private func getCurrentCycles(): Nat {
+    Cycles.balance();
+  };
+
+  public func getStatus(request: ?StatusRequest): async ?StatusResponse {
+    switch(request) {
+      case (?_request) {
+          var cycles: ?Nat = null;
+          if (_request.cycles) {
+              cycles := ?getCurrentCycles();
+          };
+          var memory_size: ?Nat = null;
+          if (_request.memory_size) {
+              memory_size := ?getCurrentMemory();
+          };
+          var heap_memory_size: ?Nat = null;
+          if (_request.heap_memory_size) {
+              heap_memory_size := ?getCurrentHeapMemory();
+          };
+          return ?{
+              cycles = cycles;
+              memory_size = memory_size;
+              heap_memory_size = heap_memory_size;
+          };
+      };
+      case null return null;
+    };
+  };
+
+  private func getAvailableMemoryCanister(canisterId: Principal) : async ?Nat{
+    let can = actor(Principal.toText(canisterId)): actor { 
+        getStatus: (?StatusRequest) -> async ?StatusResponse;
+    };
+
+    let request : StatusRequest = {
+        cycles: Bool = false;
+        heap_memory_size: Bool = false; 
+        memory_size: Bool = true;
+    };
+    
+    switch(await can.getStatus(?request)){
+      case(?status){
+        switch(status.memory_size){
+          case(?memSize){
+            let availableMemory: Nat = MAX_CANISTER_SIZE - memSize;
+            return ?availableMemory;
+          };
+          case null null;
+        };
+      };
+      case null null;
+    };
   };
 }

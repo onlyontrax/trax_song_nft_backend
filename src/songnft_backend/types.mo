@@ -138,6 +138,18 @@ module Types {
         };
     };
     public type TokenIndex = Nat32;
+    public type FileExtension = {
+      #jpeg;
+      #jpg;
+      #png;
+      #gif;
+      #svg;
+      #mp3;
+      #wav;
+      #aac;
+      #mp4;
+      #avi;
+    };
     public type SongMetaData = {
         id: Text;
         name: Text;
@@ -151,7 +163,7 @@ module Types {
         logo: Blob;
         chunkCount: Nat64;
         size: Nat64;
-        extension: Text;
+        extension: FileExtension;
     };
     public type TicketMetaData = {
         id: Text;
@@ -167,9 +179,6 @@ module Types {
         status: Text;
         schedule: Time.Time;
         logo: Blob;
-        chunkCount: Nat64;
-        size: Nat64;
-        extension: Text;
     };
 
     // Ext Common's Metadata
@@ -406,17 +415,9 @@ module Types {
 
     // public type Thumbnail = Blob; // encoded as a PNG file
     public type ChunkData = Blob; // encoded as ???
-
-    public type FileExtension = {
-      #jpeg;
-      #jpg;
-      #png;
-      #gif;
-      #svg;
-      #mp3;
-      #wav;
-      #aac;
-      #mp4;
-      #avi;
+    
+    public type Account = {
+        owner : Principal;
+        subaccount : ?SubAccount;
     };
 };
